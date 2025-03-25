@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { Post } from '../../../src/types';
 import fs from 'fs';
 import path from 'path';
@@ -80,7 +80,7 @@ export async function GET() {
 }
 
 // POST handler for creating a new post
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   const posts = readPosts();
   const body = await request.json();
   
@@ -93,5 +93,5 @@ export async function POST(request: NextRequest) {
   posts.unshift(newPost);
   writePosts(posts);
   
-  return NextResponse.json(newPost, { status: 201 });
+  return Response.json(newPost, { status: 201 });
 } 

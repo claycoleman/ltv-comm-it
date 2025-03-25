@@ -3,7 +3,7 @@
 import React from 'react';
 import { Header } from '../../src/components/Header';
 import { Footer } from '../../src/components/Footer';
-import { PostOffer } from '../../src/pages/PostOffer';
+import { PostOffer } from '../../src/page-components/PostOffer';
 import { useRouter } from 'next/navigation';
 import { Post } from '../../src/types';
 
