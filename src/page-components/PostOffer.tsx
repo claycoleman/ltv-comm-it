@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Post } from '../types';
+import { AudioRecorder } from '../components/AudioRecorder';
 
 interface PostOfferProps {
   onSubmit: (post: Omit<Post, 'id' | 'date'>) => void;
@@ -28,9 +29,36 @@ export function PostOffer({ onSubmit, onCancel }: PostOfferProps) {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleAudioProcessed = (data: Record<string, any>) => {
+    setFormData({
+      title: data.title || '',
+      description: data.description || '',
+      location: data.location || 'Boston',
+      category: data.category || '',
+      author: data.author || ''
+    });
+    
+    // Show a notification that the form has been filled with AI-processed data
+    // This could be replaced with a toast notification or other UI feedback
+    const formElement = document.querySelector('form');
+    if (formElement) {
+      formElement.classList.add('border-green-500', 'border-2');
+      setTimeout(() => {
+        formElement.classList.remove('border-green-500', 'border-2');
+      }, 2000);
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
       <h2 className="text-3xl font-bold text-gray-900 mb-8">Post an Offer</h2>
+      
+      {/* Audio Recorder Component */}
+      <AudioRecorder 
+        onAudioProcessed={handleAudioProcessed} 
+        postType="Offer" 
+      />
+      
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
           <label htmlFor="title" className="block text-sm font-medium text-gray-700">
@@ -55,7 +83,7 @@ export function PostOffer({ onSubmit, onCancel }: PostOfferProps) {
           <textarea
             name="description"
             id="description"
-            required
+            required={false}
             value={formData.description}
             onChange={handleChange}
             rows={4}
