@@ -43,35 +43,43 @@ const INITIAL_POSTS: Post[] = [
   }
 ];
 
-// Redis client singleton
-let redisClient: ReturnType<typeof createClient> | null = null;
-
 /**
- * Initialize and get the Redis client
+ * Check if we're running in production environment
  */
-async function getRedisClient() {
-  if (!redisClient) {
-    try {
-      redisClient = createClient({
-        url: process.env.REDIS_URL
-      });
-      
-      await redisClient.connect();
-      
-      // Check if posts exist in Redis, if not, initialize with demo data
-      const postsExist = await redisClient.exists(POSTS_KEY);
-      if (!postsExist) {
-        console.log('Initializing Redis with demo posts data');
-        await redisClient.set(POSTS_KEY, JSON.stringify(INITIAL_POSTS));
-      }
-    } catch (error) {
-      console.error('Failed to connect to Redis:', error);
-      redisClient = null;
-      throw error;
-    }
+function isProduction(): boolean {
+  return process.env.NODE_ENV === 'production' && !!process.env.REDIS_URL;
+}
+
+// Redis client creation function (not a singleton in serverless)
+async function createRedisClient() {
+  if (!isProduction()) {
+    return null;
   }
   
-  return redisClient;
+  try {
+    console.log('Creating new Redis client with URL:', process.env.REDIS_URL?.substring(0, 12) + '...');
+    
+    const client = createClient({
+      url: process.env.REDIS_URL,
+      socket: {
+        reconnectStrategy: (retries) => {
+          // Exponential backoff with a maximum delay of 3 seconds
+          return Math.min(retries * 100, 3000);
+        }
+      }
+    });
+    
+    // Log connection events
+    client.on('error', (err) => console.error('Redis client error:', err));
+    
+    await client.connect();
+    console.log('Redis client connected');
+    
+    return client;
+  } catch (error) {
+    console.error('Failed to connect to Redis:', error);
+    return null;
+  }
 }
 
 /**
@@ -92,28 +100,58 @@ function ensureDataDirExists() {
  * Get all posts
  */
 export async function getPosts(): Promise<Post[]> {
+  console.log(`Getting posts (environment: ${process.env.NODE_ENV}, using Redis: ${isProduction()})`);
+  let client = null;
+  
   try {
-    if (process.env.NODE_ENV === 'production') {
+    if (isProduction()) {
       // In production, use Redis
-      const client = await getRedisClient();
-      const postsJson = await client.get(POSTS_KEY);
+      client = await createRedisClient();
+      if (!client) {
+        console.warn('Redis client unavailable, falling back to initial posts data');
+        return [...INITIAL_POSTS];
+      }
       
-      if (!postsJson) {
+      // Check if posts exist in Redis, if not, initialize with demo data
+      const postsExist = await client.exists(POSTS_KEY);
+      console.log(`Posts exist in Redis: ${postsExist}`);
+      
+      if (!postsExist) {
         console.log('No posts found in Redis, initializing with demo data');
         await client.set(POSTS_KEY, JSON.stringify(INITIAL_POSTS));
         return [...INITIAL_POSTS];
       }
       
-      return JSON.parse(postsJson);
+      const postsJson = await client.get(POSTS_KEY);
+      if (!postsJson) {
+        return [...INITIAL_POSTS];
+      }
+      
+      console.log('Posts retrieved from Redis successfully');
+      const posts = JSON.parse(postsJson);
+      console.log(`Found ${posts.length} posts`);
+      return posts;
     } else {
       // In development, use file storage
       ensureDataDirExists();
       const data = fs.readFileSync(dataPath, 'utf8');
-      return JSON.parse(data);
+      const posts = JSON.parse(data);
+      console.log(`Read ${posts.length} posts from file storage`);
+      return posts;
     }
   } catch (error) {
     console.error('Error reading posts:', error);
     return [...INITIAL_POSTS];
+  } finally {
+    // Clean up Redis connection
+    if (client) {
+      try {
+        await client.quit();
+        console.log('Redis client disconnected properly');
+      } catch (err) {
+        console.error('Error disconnecting Redis client:', err);
+      }
+    }
   }
 }
 
@@ -121,18 +159,38 @@ export async function getPosts(): Promise<Post[]> {
  * Save all posts
  */
 export async function savePosts(posts: Post[]): Promise<void> {
+  console.log(`Saving ${posts.length} posts (environment: ${process.env.NODE_ENV}, using Redis: ${isProduction()})`);
+  let client = null;
+  
   try {
-    if (process.env.NODE_ENV === 'production') {
+    if (isProduction()) {
       // In production, use Redis
-      const client = await getRedisClient();
+      client = await createRedisClient();
+      if (!client) {
+        console.warn('Redis client unavailable, posts not saved');
+        return;
+      }
+      
       await client.set(POSTS_KEY, JSON.stringify(posts));
+      console.log('Posts saved to Redis successfully');
     } else {
       // In development, use file storage
       ensureDataDirExists();
       fs.writeFileSync(dataPath, JSON.stringify(posts, null, 2), 'utf8');
+      console.log('Posts saved to file storage');
     }
   } catch (error) {
     console.error('Error writing posts:', error);
+  } finally {
+    // Clean up Redis connection
+    if (client) {
+      try {
+        await client.quit();
+        console.log('Redis client disconnected properly');
+      } catch (err) {
+        console.error('Error disconnecting Redis client:', err);
+      }
+    }
   }
 }
 
@@ -140,6 +198,8 @@ export async function savePosts(posts: Post[]): Promise<void> {
  * Create a new post
  */
 export async function createPost(postData: Omit<Post, 'id' | 'date'>): Promise<Post> {
+  console.log('Creating new post with data:', postData);
+  
   const posts = await getPosts();
   
   const newPost: Post = {
@@ -151,6 +211,7 @@ export async function createPost(postData: Omit<Post, 'id' | 'date'>): Promise<P
   posts.unshift(newPost);
   await savePosts(posts);
   
+  console.log('New post created with ID:', newPost.id);
   return newPost;
 }
 

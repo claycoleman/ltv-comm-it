@@ -28,8 +28,8 @@ export default function PostOfferPage() {
         throw new Error("Failed to create post");
       }
 
-      // Use next/navigation router for client-side navigation
-      router.push("/");
+      // Do a full page refresh to ensure we get fresh data
+      window.location.href = "/";
     } catch (error) {
       console.error("Error creating post:", error);
     }
