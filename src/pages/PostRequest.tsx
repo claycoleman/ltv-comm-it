@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Post } from '../types';
 
 interface PostRequestProps {
   onSubmit: (post: Omit<Post, 'id' | 'date'>) => void;
+  onCancel: () => void;
 }
 
-export function PostRequest({ onSubmit }: PostRequestProps) {
-  const navigate = useNavigate();
+export function PostRequest({ onSubmit, onCancel }: PostRequestProps) {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -22,7 +21,6 @@ export function PostRequest({ onSubmit }: PostRequestProps) {
       ...formData,
       type: 'Request'
     });
-    navigate('/');
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -118,7 +116,7 @@ export function PostRequest({ onSubmit }: PostRequestProps) {
         <div className="flex justify-end space-x-3">
           <button
             type="button"
-            onClick={() => navigate('/')}
+            onClick={onCancel}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
           >
             Cancel
