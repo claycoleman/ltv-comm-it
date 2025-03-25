@@ -34,6 +34,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [microphoneAvailable, setMicrophoneAvailable] = useState<
     boolean | null
   >(null);
+  const [filledFields, setFilledFields] = useState<string[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
@@ -184,7 +185,27 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
         return;
       }
 
-      onAudioProcessed(data);
+      // Track which fields have meaningful values (excluding 'type')
+      const meaningfulFields = Object.keys(data).filter(key => 
+        data[key] !== undefined && 
+        data[key] !== '' && 
+        key !== 'type'
+      );
+      
+      // set the filled fields to our new meaningful fields
+      setFilledFields(meaningfulFields);
+
+      // Send data to parent component using a callback to merge with previous data
+      onAudioProcessed((prevData: Record<string, any>) => {
+        const result = { ...prevData };
+        
+        // Only update fields that have meaningful values
+        meaningfulFields.forEach(key => {
+          result[key] = data[key];
+        });
+        
+        return result;
+      });
     } catch (err) {
       console.error("Error processing audio:", err);
       setError({
@@ -202,87 +223,66 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
     switch (error.type) {
       case ErrorType.MIC_PERMISSION:
         return (
-          <div className="flex flex-col space-y-2 text-red-600 bg-red-50 p-3 rounded-md">
-            <div className="flex items-center">
+          <div className="px-6 py-4 bg-red-50 border-t border-red-100 text-red-600">
+            <div className="flex items-center mb-2">
               <MicOff size={16} className="mr-2" />
-              <span className="font-semibold">Microphone Access Needed</span>
+              <span className="font-medium">Microphone Access Needed</span>
             </div>
-            <p className="text-sm">{error.error}</p>
+            <p className="text-sm mb-3">{error.error}</p>
             <button
               onClick={requestMicrophonePermission}
-              className="mt-2 text-sm px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+              className="w-full text-sm px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
             >
               Request Microphone Access
             </button>
-            <p className="text-xs mt-1">
-              If you've denied permission, you may need to reset it in your
-              browser settings:
+            <p className="text-xs mt-3 text-red-500">
+              If you've denied permission, you may need to reset it in your browser settings:
               <br />
-              • Chrome: Click the lock/info icon in the address bar
+              • Chrome: Click the lock icon in the address bar
               <br />
               • Firefox: Click the shield icon in the address bar
-              <br />• Safari: Go to Preferences → Websites → Microphone
+              <br />
+              • Safari: Go to Preferences → Websites → Microphone
             </p>
           </div>
         );
 
       case ErrorType.BROWSER_SUPPORT:
         return (
-          <div className="flex flex-col space-y-2 text-red-600 bg-red-50 p-3 rounded-md">
+          <div className="px-6 py-4 bg-red-50 border-t border-red-100 text-red-600">
             <div className="flex items-center">
               <AlertCircle size={16} className="mr-2" />
-              <span className="font-semibold">Browser Not Supported</span>
+              <span className="font-medium">Browser Not Supported</span>
             </div>
-            <p className="text-sm">{error.error}</p>
-          </div>
-        );
-
-      case ErrorType.INSUFFICIENT_INFO:
-        return (
-          <div className="flex flex-col space-y-2 text-amber-600 bg-amber-50 p-3 rounded-md">
-            <div className="flex items-center">
-              <Info size={16} className="mr-2" />
-              <span className="font-semibold">Not enough information</span>
-            </div>
-            <p className="text-sm">
-              I couldn't gather enough details from your recording. Please try
-              again with more specific information.
-            </p>
-            {error.missingFields && error.missingFields.length > 0 && (
-              <div className="text-xs mt-1">
-                <span>I need information about: </span>
-                <span className="font-medium">
-                  {error.missingFields.join(", ")}
-                </span>
-              </div>
-            )}
+            <p className="text-sm mt-1">{error.error}</p>
           </div>
         );
 
       case ErrorType.INVALID_FORMAT:
         return (
-          <div className="flex flex-col space-y-2 text-orange-600 bg-orange-50 p-3 rounded-md">
+          <div className="px-6 py-4 bg-amber-50 border-t border-amber-100 text-amber-700">
             <div className="flex items-center">
               <AlertCircle size={16} className="mr-2" />
-              <span className="font-semibold">Format issue</span>
+              <span className="font-medium">Processing Issue</span>
             </div>
-            <p className="text-sm">
-              I had trouble extracting structured data from your recording.
-              Please try again with a clearer description of your {postType.toLowerCase()}.
+            <p className="text-sm mt-1">
+              We had trouble processing your recording. Try again with a clearer description, 
+              or fill in the form manually.
             </p>
           </div>
         );
 
+      case ErrorType.INSUFFICIENT_INFO:
       case ErrorType.API_ERROR:
       case ErrorType.SERVER_ERROR:
       default:
         return (
-          <div className="flex flex-col space-y-2 text-red-600 bg-red-50 p-3 rounded-md">
+          <div className="px-6 py-4 bg-red-50 border-t border-red-100 text-red-600">
             <div className="flex items-center">
               <AlertCircle size={16} className="mr-2" />
-              <span className="font-semibold">Error</span>
+              <span className="font-medium">Error</span>
             </div>
-            <p className="text-sm">{error.error}</p>
+            <p className="text-sm mt-1">{error.error}</p>
           </div>
         );
     }
@@ -293,12 +293,10 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
       return (
         <button
           onClick={requestMicrophonePermission}
-          className="p-4 bg-gray-500 text-white rounded-full cursor-pointer"
+          className="p-6 bg-gray-200 text-gray-500 rounded-full cursor-pointer shadow-lg hover:bg-gray-300 transition-all"
           aria-label="Request microphone access"
         >
-          <div className="flex items-center justify-center">
-            <MicOff size={24} />
-          </div>
+          <MicOff size={32} />
         </button>
       );
     }
@@ -307,66 +305,95 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
       return (
         <button
           onClick={startRecording}
-          disabled={isProcessing || !microphoneAvailable}
-          className="p-4 bg-red-600 text-white rounded-full hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          disabled={isProcessing}
+          className="p-7 bg-red-500 text-white rounded-full hover:bg-red-600 disabled:bg-gray-300 disabled:text-gray-400 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all"
           aria-label="Start recording"
         >
-          <Mic size={24} />
+          <Mic size={34} />
         </button>
       );
     }
 
     return (
-      <button
-        onClick={stopRecording}
-        className="p-4 bg-gray-700 text-white rounded-full hover:bg-gray-800"
-        aria-label="Stop recording"
-      >
-        <Square size={24} />
-      </button>
+      <div className="flex flex-col items-center">
+        <button
+          onClick={stopRecording}
+          className="p-7 bg-red-600 text-white rounded-full hover:bg-red-700 shadow-lg hover:shadow-xl transition-all relative"
+          aria-label="Stop recording"
+        >
+          <div className="absolute inset-0 rounded-full border-4 border-red-400 animate-ping opacity-40"></div>
+          <Square size={34} />
+        </button>
+        <div className="mt-2 text-red-600 text-sm font-medium">
+          Click to stop
+        </div>
+      </div>
     );
   };
 
-  const getStatusMessage = () => {
-    if (isRecording) {
-      return (
-        <span className="text-red-500 flex items-center">
-          <span className="inline-block h-2 w-2 bg-red-500 rounded-full mr-2 animate-pulse"></span>
-          Recording...
-        </span>
-      );
-    }
-
-    if (!microphoneAvailable) {
-      return <span className="text-red-500">Microphone access required</span>;
-    }
-
-    return <span>Ready to record</span>;
-  };
-
   return (
-    <div className="flex flex-col items-center space-y-4 my-6 p-4 border border-gray-200 rounded-lg">
-      <h3 className="text-lg font-medium text-gray-700">Record Your {postType}</h3>
-      <p className="text-sm text-gray-500 text-center">
-        Click the microphone and describe your {postType.toLowerCase()}. We'll fill out the form
-        for you.
-      </p>
-      <p className="text-xs text-gray-500 text-center italic">
-        Note: Speech recognition is optimized for English audio
-      </p>
+    <div className="my-6 rounded-xl overflow-hidden bg-gradient-to-b from-gray-50 to-white">
+      {/* Main recording interface */}
+      <div className="flex flex-col items-center p-6">
+        <h3 className="text-lg font-medium text-gray-700 mb-2">
+          {isRecording ? "Recording Your " + postType : "Describe Your " + postType}
+        </h3>
+        
+        {/* Central microphone button with prominent styling */}
+        <div className="my-5 relative">
+          {renderMicrophoneButton()}
+        </div>
+        
+        {/* Status text - changes based on current state */}
+        <div className="h-8 text-center">
+          {isProcessing && (
+            <div className="inline-flex items-center text-sm text-blue-600 font-medium">
+              <Loader2 size={16} className="animate-spin mr-2" />
+              Processing audio...
+            </div>
+          )}
+          
+          {isRecording && (
+            <div className="px-3 py-1 bg-red-50 rounded-full inline-flex items-center text-sm text-red-600 font-medium border border-red-200">
+              <span className="inline-block h-2 w-2 bg-red-500 rounded-full mr-2 animate-pulse"></span>
+              Recording in progress
+            </div>
+          )}
+          
+          {!isRecording && !isProcessing && (
+            <span className="text-sm text-gray-500">
+              {microphoneAvailable ? "Click microphone to start recording" : "Microphone access required"}
+            </span>
+          )}
+        </div>
+        
+        {/* Show which fields have been populated */}
+        {filledFields.length > 0 && !isRecording && !isProcessing && (
+          <div className="mt-3 text-xs text-green-600">
+            <span className="font-medium">Fields populated:</span>{' '}
+            {filledFields.join(', ')}
+          </div>
+        )}
+      </div>
 
-      <div className="flex justify-center">{renderMicrophoneButton()}</div>
-
-      {isProcessing && (
-        <div className="flex items-center text-sm text-blue-600">
-          <Loader2 size={16} className="animate-spin mr-2" />
-          Processing your recording...
+      {/* Helper text in a more subtle footer */}
+      <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
+        <p className="flex items-center justify-center gap-1">
+          <Info size={12} />
+          <span>
+            {filledFields.length > 0 
+              ? "You can record multiple times to fill in or update fields." 
+              : "Speech recognition works best with English. We'll prioritize extracting a title, while other fields will be filled when possible."}
+          </span>
+        </p>
+      </div>
+      
+      {/* Error messages displayed at the bottom when present */}
+      {error && (
+        <div>
+          {renderErrorMessage()}
         </div>
       )}
-
-      {error && renderErrorMessage()}
-
-      <div className="text-xs text-gray-500 mt-2">{getStatusMessage()}</div>
     </div>
   );
 };

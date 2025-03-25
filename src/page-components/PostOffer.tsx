@@ -30,16 +30,23 @@ export function PostOffer({ onSubmit, onCancel }: PostOfferProps) {
   };
 
   const handleAudioProcessed = (data: Record<string, any>) => {
-    setFormData({
-      title: data.title || '',
-      description: data.description || '',
-      location: data.location || 'Boston',
-      category: data.category || '',
-      author: data.author || ''
+    setFormData(prevFormData => {
+      // If data is a function (callback), execute it with the previous form data
+      if (typeof data === 'function') {
+        return data(prevFormData);
+      }
+      
+      // Otherwise, use the original implementation
+      return {
+        title: data.title || '',
+        description: data.description || '',
+        location: data.location || 'Boston',
+        category: data.category || '',
+        author: data.author || ''
+      };
     });
     
     // Show a notification that the form has been filled with AI-processed data
-    // This could be replaced with a toast notification or other UI feedback
     const formElement = document.querySelector('form');
     if (formElement) {
       formElement.classList.add('border-green-500', 'border-2');

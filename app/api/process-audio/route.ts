@@ -8,11 +8,11 @@ import { Readable } from "stream";
 
 // Zod schema for validating the parsed data
 const PostSchema = z.object({
-  title: z.string().min(1, "Title is required"),
+  title: z.string().optional(),
   description: z.string().optional(),
-  location: z.string().min(1, "Location is required"),
-  category: z.string().min(1, "Category is required"),
-  author: z.string().min(1, "Author is required"),
+  location: z.string().optional(),
+  category: z.string().optional(),
+  author: z.string().optional(),
   type: z.enum(["Offer", "Request"])
 });
 
@@ -63,19 +63,24 @@ async function processTranscriptionWithRetries(
             role: "system",
             content: `You are a helpful assistant that extracts structured data from text. 
             Parse the user's input and extract the following fields for a community ${postType.toLowerCase()} posting:
-            - title: A concise title for the ${postType.toLowerCase()} (required)
-            - description: A detailed description of ${postType === 'Offer' ? 'what is being offered' : 'what is being requested'} (optional)
-            - location: The location (default to "Boston" if not specified)
-            - category: The category of the ${postType.toLowerCase()} (e.g., Education, Services, etc.)
-            - author: The name of the person making the ${postType.toLowerCase()} (use "Anonymous" if not specified)
             
-            IMPORTANT: If the input does not contain explicit information about some fields:
-            1. For description: leave it as an empty string if not provided
-            2. For category: intelligently infer a suitable category based on the overall content
-            3. For other fields: use reasonable default values
+            PRIORITY ORDER (extract in this order):
+            1. title: A concise title for the ${postType.toLowerCase()} - ALWAYS TRY TO EXTRACT THIS FIRST. If no details about the ${postType.toLowerCase()} are provided, then leave blank.
+            2. category: The category of the ${postType.toLowerCase()} - ALWAYS REQUIRED IF TITLE EXISTS
+            3. location: The location
+            4. author: The name of the person making the ${postType.toLowerCase()}
+            5. description: A detailed description of ${postType === 'Offer' ? 'what is being offered' : 'what is being requested'} - ONLY IF DETAILS ARE PROVIDED
             
-            Only include a field in the "missing_fields" array if it's a required field (title, location, author) AND 
-            there is absolutely no way to infer it from the context.
+            IMPORTANT GUIDELINES:
+            - FOCUS ON THE TITLE FIELD FIRST. Always try to generate a meaningful title, even from minimal input.
+            - ALWAYS PROVIDE A CATEGORY if a title exists. If not explicitly mentioned, intelligently infer it from:
+              * The type of service, item, or activity mentioned
+              * The domain (e.g., education, transportation, household, professional services)
+              * The context and keywords used
+            - Common categories include: Education, Professional Services, Household, Transportation, Technology, Community, Health, Art & Culture
+            - For the description field: only populate it if there are clear details beyond what's in the title.
+            - It's better to leave secondary fields (except category) empty than to fill them with uncertain values.
+            - Leave the "missing_fields" array empty as all fields except 'title' and 'category' are optional.
             
             Format your response as valid JSON with these exact fields plus an additional "missing_fields" array.`
           },
@@ -97,38 +102,27 @@ async function processTranscriptionWithRetries(
       
       const parsedData = JSON.parse(responseContent);
       
-      // Check if crucial fields are missing
-      if (parsedData.missing_fields && parsedData.missing_fields.length > 0) {
-        console.log(`[LLM Processing] Missing fields detected: ${parsedData.missing_fields.join(', ')}`);
-        throw {
-          type: ErrorTypes.INSUFFICIENT_INFO,
-          message: 'Not enough information provided in the audio',
-          fields: parsedData.missing_fields
-        } as CustomError;
-      }
+      // We no longer need to check for missing fields since all fields are optional
       
       // Validate with Zod schema
       const { missing_fields, ...dataToValidate } = parsedData;
       
-      // Set empty description to undefined so it doesn't fail validation
-      if (dataToValidate.description === '') {
-        dataToValidate.description = undefined;
+      // Clean up empty strings to undefined
+      for (const key of Object.keys(dataToValidate)) {
+        if (dataToValidate[key] === '') {
+          dataToValidate[key] = undefined;
+        }
       }
       
       // Add the type field
       dataToValidate.type = postType;
       
       console.log(`[LLM Processing] Successfully extracted structured data on attempt ${attempt}`);
+      console.log(`[LLM Processing] Extracted fields: ${Object.keys(dataToValidate).filter(key => dataToValidate[key] !== undefined).join(', ')}`);
+      
       return PostSchema.parse(dataToValidate);
     } catch (error) {
       lastError = error;
-      
-      // If it's an insufficient info error, don't retry
-      if (typeof error === 'object' && error !== null && 'type' in error && 
-          (error as CustomError).type === ErrorTypes.INSUFFICIENT_INFO) {
-        console.log(`[LLM Processing] Insufficient information error, not retrying`);
-        throw error;
-      }
       
       // For other errors, log and continue trying
       const errorTime = ((performance.now() - attemptStartTime) / 1000).toFixed(2);
@@ -254,7 +248,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           { 
             error: 'No speech detected in the audio',
-            type: ErrorTypes.INSUFFICIENT_INFO
+            type: ErrorTypes.API_ERROR
           },
           { status: 422 }
         );
@@ -305,16 +299,7 @@ export async function POST(request: NextRequest) {
       if (typeof error === 'object' && error !== null) {
         const customError = error as Partial<CustomError>;
         
-        if (customError.type === ErrorTypes.INSUFFICIENT_INFO) {
-          return NextResponse.json(
-            { 
-              error: customError.message,
-              type: customError.type,
-              missingFields: customError.fields
-            },
-            { status: 422 }
-          );
-        } else if (customError.type === ErrorTypes.INVALID_FORMAT) {
+        if (customError.type === ErrorTypes.INVALID_FORMAT) {
           return NextResponse.json(
             { 
               error: customError.message,
