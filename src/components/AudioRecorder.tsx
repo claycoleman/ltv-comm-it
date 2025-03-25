@@ -84,6 +84,26 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
     checkBrowserSupport();
   }, []);
 
+  // Cleanup effect - stop recording if component unmounts while recording
+  useEffect(() => {
+    return () => {
+      // This function runs when the component unmounts
+      if (mediaRecorderRef.current && isRecording) {
+        console.log("AudioRecorder: Stopping recording on unmount");
+        try {
+          mediaRecorderRef.current.stop();
+          
+          // Release any active media streams
+          if (mediaRecorderRef.current.stream) {
+            mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+          }
+        } catch (err) {
+          console.error("Error stopping recording on unmount:", err);
+        }
+      }
+    };
+  }, [isRecording]);
+
   const startRecording = async () => {
     setError(null);
     try {
