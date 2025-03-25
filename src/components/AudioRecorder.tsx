@@ -236,7 +236,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
               Request Microphone Access
             </button>
             <p className="text-xs mt-3 text-red-500">
-              If you've denied permission, you may need to reset it in your browser settings:
+              If you&apos;ve denied permission, you may need to reset it in your browser settings:
               <br />
               • Chrome: Click the lock icon in the address bar
               <br />
